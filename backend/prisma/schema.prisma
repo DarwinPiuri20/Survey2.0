@@ -1,0 +1,182 @@
+// Schema para el sistema de evaluación de vendedores
+// Incluye todos los modelos requeridos: usuarios, roles, evaluaciones, preguntas, respuestas y retroalimentación
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Modelo de roles de usuario
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique // admin, seller, validator
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+
+  @@map("roles")
+}
+
+// Modelo de usuarios
+model User {
+  id                String       @id @default(uuid())
+  email             String       @unique
+  password          String
+  firstName         String
+  lastName          String
+  roleId            String
+  role              Role         @relation(fields: [roleId], references: [id])
+  storeId           String?      // Tienda a la que pertenece (principalmente para vendedores)
+  active            Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  evaluationsGiven  Evaluation[] @relation("evaluator") // Evaluaciones realizadas por validadores
+  evaluationsReceived Evaluation[] @relation("evaluated") // Evaluaciones recibidas por vendedores
+
+  @@map("users")
+}
+
+// Modelo de tiendas
+model Store {
+  id          String       @id @default(uuid())
+  name        String
+  location    String?
+  region      String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  evaluations Evaluation[]
+
+  @@map("stores")
+}
+
+// Modelo de campañas
+model Campaign {
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  startDate   DateTime
+  endDate     DateTime?
+  active      Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  evaluations Evaluation[]
+
+  @@map("campaigns")
+}
+
+// Categorías de preguntas (Observación Inicial, Interacción Comercial, Cierre)
+model Category {
+  id          String     @id @default(uuid())
+  name        String
+  description String?
+  order       Int
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  questions   Question[]
+
+  @@map("categories")
+}
+
+// Modelo de preguntas
+model Question {
+  id         String   @id @default(uuid())
+  text       String
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+  type       String   // numeric, text, boolean, multiple_choice
+  options    Json?    // Para preguntas de opción múltiple
+  required   Boolean  @default(true)
+  order      Int
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  answers    Answer[]
+
+  @@map("questions")
+}
+
+// Modelo de evaluación
+model Evaluation {
+  id              String      @id @default(uuid())
+  evaluatorId     String      // Validador que realiza la evaluación
+  evaluator       User        @relation("evaluator", fields: [evaluatorId], references: [id])
+  sellerId        String      // Vendedor evaluado
+  seller          User        @relation("evaluated", fields: [sellerId], references: [id])
+  storeId         String
+  store           Store       @relation(fields: [storeId], references: [id])
+  campaignId      String?
+  campaign        Campaign?   @relation(fields: [campaignId], references: [id])
+  date            DateTime    @default(now())
+  totalScore      Float?      // Puntaje promedio de todas las respuestas
+  status          String      @default("draft") // draft, completed, feedback_generated
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  answers         Answer[]
+  feedback        Feedback?
+
+  @@map("evaluations")
+}
+
+// Modelo de respuestas a preguntas
+model Answer {
+  id           String     @id @default(uuid())
+  evaluationId String
+  evaluation   Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  questionId   String
+  question     Question   @relation(fields: [questionId], references: [id])
+  numericValue Float?     // Para respuestas numéricas (1-5)
+  textValue    String?    // Para respuestas de texto
+  booleanValue Boolean?   // Para respuestas tipo sí/no
+  optionValue  String?    // Para respuestas de selección múltiple
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@map("answers")
+}
+
+// Modelo de retroalimentación generada por IA
+model Feedback {
+  id           String     @id @default(uuid())
+  evaluationId String     @unique
+  evaluation   Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  strengths    String     // Fortalezas (F)
+  concerns     String     // Inquietudes (I)
+  focusPoints  String     // Focos de atención (F)
+  actions      String     // Acciones (A)
+  rawPrompt    String?    // Prompt enviado a la IA
+  rawResponse  String?    // Respuesta completa de la IA
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@map("feedbacks")
+}
+
+// Historial de visualizaciones de feedback
+model FeedbackView {
+  id           String   @id @default(uuid())
+  feedbackId   String
+  userId       String
+  viewedAt     DateTime @default(now())
+
+  @@map("feedback_views")
+}
+
+// Logs de sistema para auditoría
+model AuditLog {
+  id           String   @id @default(uuid())
+  userId       String?
+  action       String
+  entityType   String
+  entityId     String?
+  details      Json?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  @@map("audit_logs")
+}
